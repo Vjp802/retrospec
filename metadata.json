@@ -1,0 +1,5 @@
+{
+  "name": "RetroSpec",
+  "description": "Analyze device reviews over time, comparing launch sentiment vs. long-term usage verdicts using AI-powered aggregation.",
+  "requestFramePermissions": []
+}

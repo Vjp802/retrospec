@@ -1,8 +1,15 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { ReviewData } from "../types";
 
-// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// The API key must be obtained from VITE_API_KEY
+const getAIClient = () => {
+  const apiKey = import.meta.env.VITE_API_KEY;
+  if (!apiKey) {
+    console.error("VITE_API_KEY is missing!");
+    throw new Error("API Key is missing. Please set VITE_API_KEY in your environment.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
 
 const reviewSchema: Schema = {
   type: Type.OBJECT,
@@ -13,13 +20,13 @@ const reviewSchema: Schema = {
     aggregateScore: { type: Type.NUMBER, description: "Current overall score out of 100" },
     reviewCount: { type: Type.INTEGER, description: "The total volume of user and expert reviews considered. Prefer aggregate counts (e.g., 'based on 2,500 reviews')." },
     confidenceScore: { type: Type.NUMBER, description: "Confidence score (0-100) based on data volume and recency. >1000 reviews + recent threads = 90+. Sparse/Old data = <50." },
-    dataSourcesFound: { 
-      type: Type.ARRAY, 
-      items: { type: Type.STRING }, 
-      description: "List of primary domains where data was found (e.g., 'reddit.com', 'youtube.com', 'theverge.com')" 
+    dataSourcesFound: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING },
+      description: "List of primary domains where data was found (e.g., 'reddit.com', 'youtube.com', 'theverge.com')"
     },
     timePoints: {
-      type: Type.ARRAY, 
+      type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
@@ -49,7 +56,7 @@ export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> =
   try {
     const model = "gemini-3-flash-preview";
     const today = new Date().toISOString().split('T')[0];
-    
+
     const prompt = `
       Context: Today's date is ${today}.
       Analyze reviews for the device: "${query}".
@@ -78,6 +85,7 @@ export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> =
       Ensure the analysis captures the arc of the device's lifespan.
     `;
 
+    const ai = getAIClient();
     const response = await ai.models.generateContent({
       model: model,
       contents: prompt,
@@ -98,17 +106,17 @@ export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> =
     // Extract sources from grounding metadata if available
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     const sources = groundingChunks?.map((chunk: any) => {
-        if (chunk.web) {
-            return { title: chunk.web.title, uri: chunk.web.uri };
-        }
-        return null;
+      if (chunk.web) {
+        return { title: chunk.web.title, uri: chunk.web.uri };
+      }
+      return null;
     }).filter((s: any) => s !== null) || [];
 
     // Filter duplicate sources based on URI
     const uniqueSources = sources.filter((source: any, index: any, self: any) =>
-        index === self.findIndex((t: any) => (
-            t.uri === source.uri
-        ))
+      index === self.findIndex((t: any) => (
+        t.uri === source.uri
+      ))
     );
 
     return { ...data, sources: uniqueSources };

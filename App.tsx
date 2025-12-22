@@ -24,10 +24,11 @@ const App: React.FC = () => {
     try {
       const data = await analyzeDeviceReviews(query);
       setSearchState({ isLoading: false, error: null, data });
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
       setSearchState({
         isLoading: false,
-        error: "Failed to analyze reviews. Please try again later.",
+        error: err.message || "Failed to analyze reviews. Please try again later.",
         data: null,
       });
     }
@@ -36,13 +37,13 @@ const App: React.FC = () => {
   const exportToCSV = () => {
     if (!searchState.data) return;
     const data = searchState.data;
-    
+
     const headers = "Device,Launch Date,Verdict,Score,Confidence,Review Count,Pros,Cons\n";
     // Sanitize strings to escape double quotes
     const safe = (str: string) => str.replace(/"/g, '""');
-    
+
     const row = `"${safe(data.deviceName)}","${data.launchDate}","${safe(data.currentVerdict)}",${data.aggregateScore},${data.confidenceScore},${data.reviewCount},"${safe(data.pros.join('; '))}", "${safe(data.cons.join('; '))}"`;
-    
+
     const blob = new Blob([headers + row], { type: 'text/csv;charset=utf-8;' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -101,7 +102,7 @@ const App: React.FC = () => {
 
         {searchState.data && (
           <div className="animate-fade-in-up space-y-6">
-            
+
             {/* Device Header Info */}
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between bg-slate-800/30 p-6 rounded-2xl border border-slate-700/50 backdrop-blur-sm">
               <div>
@@ -115,7 +116,7 @@ const App: React.FC = () => {
                   </span>
                 </div>
               </div>
-              
+
               <button
                 onClick={exportToCSV}
                 className="mt-4 md:mt-0 flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-lg text-sm font-medium transition-colors border border-slate-600"
@@ -127,12 +128,12 @@ const App: React.FC = () => {
 
             {/* Dashboard Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
+
               {/* Left Column: Score & Verdict */}
               <div className="lg:col-span-1">
-                <ScoreCard 
-                  score={searchState.data.aggregateScore} 
-                  verdict={searchState.data.currentVerdict} 
+                <ScoreCard
+                  score={searchState.data.aggregateScore}
+                  verdict={searchState.data.currentVerdict}
                   reviewCount={searchState.data.reviewCount}
                   confidenceScore={searchState.data.confidenceScore}
                 />
@@ -154,7 +155,7 @@ const App: React.FC = () => {
                   <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-1">Data Sources</h3>
                   <p className="text-xs text-slate-500">Domains used for analysis</p>
                 </div>
-                
+
                 {/* Data Sources Badges */}
                 <div className="flex flex-wrap gap-2">
                   {searchState.data.dataSourcesFound.map((domain, idx) => (
@@ -169,10 +170,10 @@ const App: React.FC = () => {
               {searchState.data.sources.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {searchState.data.sources.map((source, idx) => (
-                    <a 
-                      key={idx} 
-                      href={source.uri} 
-                      target="_blank" 
+                    <a
+                      key={idx}
+                      href={source.uri}
+                      target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-2 p-3 bg-slate-800/30 hover:bg-slate-800 border border-slate-700/50 rounded-lg text-xs text-slate-300 transition-colors group"
                     >
@@ -185,7 +186,7 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
-        
+
         {/* Empty State / Welcome */}
         {!searchState.data && !searchState.isLoading && !searchState.error && (
           <div className="text-center py-20 text-slate-500">
@@ -198,8 +199,8 @@ const App: React.FC = () => {
       </main>
 
       <footer className="max-w-6xl mx-auto w-full mt-12 p-4 bg-blue-900/20 border-l-4 border-blue-500 text-sm text-blue-200 rounded-r-lg">
-        <strong>Architect’s Note:</strong> This Proof-of-Concept runs Gemini 3 Flash client-side for rapid prototyping. 
-        In a production environment, I would migrate the API calls to a secure Node.js backend using 
+        <strong>Architect’s Note:</strong> This Proof-of-Concept runs Gemini 3 Flash client-side for rapid prototyping.
+        In a production environment, I would migrate the API calls to a secure Node.js backend using
         Google Cloud Functions to protect API credentials and implement rate limiting.
       </footer>
     </div>

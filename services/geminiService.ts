@@ -54,7 +54,7 @@ const reviewSchema: Schema = {
 
 export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> => {
   try {
-    const model = "gemini-3-flash-preview";
+    const model = "gemini-2.0-flash";
     const today = new Date().toISOString().split('T')[0];
 
     const prompt = `

@@ -95,8 +95,12 @@ const App: React.FC = () => {
       {/* Main Content Area */}
       <main className="max-w-6xl mx-auto w-full flex-grow">
         {searchState.error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-xl text-center">
-            {searchState.error}
+          <div className="bg-red-500/10 border border-red-500/50 text-red-200 p-6 rounded-xl text-center shadow-lg">
+            <p className="font-bold text-lg mb-2">Error during analysis</p>
+            <p className="mb-4">{searchState.error}</p>
+            <p className="text-sm text-red-400">
+              Check the browser console (Aspect &gt; Console or F12) for technical details and verify your API key in .env.local
+            </p>
           </div>
         )}
 

@@ -56,9 +56,16 @@ const reviewSchema = {
   required: ["deviceName", "launchDate", "currentVerdict", "aggregateScore", "reviewCount", "confidenceScore", "dataSourcesFound", "timePoints", "pros", "cons"]
 };
 
+const KNOWN_MODELS = [
+  "gemini-2.0-flash-exp",
+  "gemini-1.5-flash",
+  "gemini-1.5-flash-002",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro",
+];
+
 export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> => {
-  // Use gemini-1.5-flash which is fast and supports JSON schema
-  const modelId = "gemini-1.5-flash";
+  const genAI = getAIClient();
   const today = new Date().toISOString().split('T')[0];
 
   const prompt = `
@@ -80,88 +87,71 @@ export const analyzeDeviceReviews = async (query: string): Promise<ReviewData> =
     Ensure the analysis captures the arc of the device's lifespan.
   `;
 
-  try {
-    const genAI = getAIClient();
+  let lastError: any = null;
 
-    // Configure model with tools
-    // Note: googleSearch tool requires specific setup. For 1.5-flash via AI Studio key, 
-    // it usually works simply by enablement. 
-    // If this fails, we will fallback to basic model without tools.
-    const model = genAI.getGenerativeModel({
-      model: modelId,
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: reviewSchema,
-      },
-      // Note: 'tools' with googleSearch is not always available on free tier standard keys in all regions.
-      // We will try WITHOUT explicit tools first, relying on the model's internal knowledge 
-      // OR add tools if strictly needed. 
-      // For this step, I will ENABLE it because the user wants "Search".
-      tools: [{ googleSearch: {} }],
-    });
+  // Try models in sequence until one works
+  for (const modelId of KNOWN_MODELS) {
+    try {
+      console.log(`Attempting analysis with model: ${modelId}`);
 
-    console.log(`Starting analysis for: ${query} using ${modelId}`);
+      const model = genAI.getGenerativeModel({
+        model: modelId,
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: reviewSchema,
+        },
+        // Try with tools enabled
+        tools: [{ googleSearch: {} } as any],
+      });
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const jsonText = response.text();
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const jsonText = response.text();
 
-    if (!jsonText) {
-      throw new Error("Empty response from Gemini");
-    }
+      if (!jsonText) throw new Error("Empty response");
 
-    const data: ReviewData = JSON.parse(jsonText);
+      console.log(`Success with model: ${modelId}`);
+      const data: ReviewData = JSON.parse(jsonText);
 
-    // Extract grounding metadata if available (different structure in this SDK)
-    // The stable SDK puts it in result.response.candidates[0].groundingMetadata
-    const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
-    const sources = groundingMetadata?.groundingChunks?.map((chunk: any) => {
-      if (chunk.web?.uri) {
-        return { title: chunk.web.title || "Source", uri: chunk.web.uri };
+      // Extract sources
+      const groundingMetadata = response.candidates?.[0]?.groundingMetadata;
+      const sources = groundingMetadata?.groundingChunks?.map((chunk: any) => {
+        if (chunk.web?.uri) {
+          return { title: chunk.web.title || "Source", uri: chunk.web.uri };
+        }
+        return null;
+      }).filter((s: any) => s !== null) || [];
+
+      // Filter duplicates
+      const uniqueSources = sources.filter((source: any, index: any, self: any) =>
+        index === self.findIndex((t: any) => (
+          t.uri === source.uri
+        ))
+      );
+
+      return { ...data, sources: uniqueSources };
+
+    } catch (error: any) {
+      console.warn(`Failed with model ${modelId}:`, error.message);
+      lastError = error;
+
+      // If it's an API Key error (403), stop trying other models, it won't help.
+      if (error.message?.includes("API Key") || error.message?.includes("403")) {
+        break;
       }
-      return null;
-    }).filter((s: any) => s !== null) || [];
-
-    // Filter duplicates
-    const uniqueSources = sources.filter((source: any, index: any, self: any) =>
-      index === self.findIndex((t: any) => (
-        t.uri === source.uri
-      ))
-    );
-
-    return { ...data, sources: uniqueSources };
-
-  } catch (error: any) {
-    console.error("Detailed Error in analyzeDeviceReviews:", error);
-
-    // Friendly Error Logic
-    let friendlyError = "Failed to analyze reviews. ";
-
-    if (error.message?.includes("API Key") || error.message?.includes("403")) {
-      friendlyError += "API Key configuration issue. (403/Forbidden). ";
-    } else if (error.message?.includes("404")) {
-      friendlyError += "Model not found (404). Ensure you have access to gemini-1.5-flash. ";
-    } else if (error.message?.includes("429")) {
-      friendlyError += "Quota exceeded (429). ";
+      // Continue to next model if it was a 404 or other potentially model-specific error
     }
-
-    // Try fallback (NO TOOLS)
-    if (!friendlyError.includes("API Key")) { // Don't retry if key is definitely bad
-      try {
-        console.log("Attempting fallback (no tools)...");
-        const genAI = getAIClient();
-        const fallbackModel = genAI.getGenerativeModel({ model: "gemini-1.5-flash" }); // No tools
-        await fallbackModel.generateContent("Test");
-        console.log("Fallback PASSED.");
-        friendlyError += "Basic connectivity works, but Search Tool failed. (Maybe your key doesn't support Search?)";
-      } catch (fbError: any) {
-        console.error("Fallback FAILED:", fbError);
-        friendlyError += `API Key or Model completely invalid. Raw: ${fbError.message}`;
-      }
-    } else {
-      friendlyError += `Raw Error: ${error.message}`;
-    }
-
-    throw new Error(friendlyError);
   }
+
+  // If we get here, all models failed
+  console.error("All models failed. Last error:", lastError);
+
+  let friendlyError = "Failed to analyze reviews. ";
+  if (lastError?.message?.includes("API Key")) {
+    friendlyError += `API Key configuration issue. (403). Raw: ${lastError.message}`;
+  } else {
+    friendlyError += `All available models failed. Last error: ${lastError?.message || lastError}`;
+  }
+
+  throw new Error(friendlyError);
 };
